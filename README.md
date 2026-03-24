@@ -1,61 +1,95 @@
-# RAG 系统 - 模块化实现
+# RAG System v2.0 - 智能问答系统
 
-一个结构清晰、模块解耦、可扩展的 RAG（检索增强生成）系统。
+一个基于 RAG（检索增强生成）技术的智能问答系统，采用模块化、可扩展的架构设计。
 
-## 项目特点
+## 🎯 核心特性
 
-- ✅ **离线索引构建与在线检索完全解耦**
-- ✅ **检索与生成 pipeline 显式实现**，不依赖黑盒框架
-- ✅ **HTTP API 服务**
-- ✅ **CLI 客户端**
-- ✅ **离线评估系统**
-- ✅ **YAML 配置系统**
+### ✨ v2.0 新特性
 
-## 项目结构
+- **服务层解耦**：IndexingService, RetrievalService, GenerationService, CacheService 独立运作
+- **推理层抽象**：支持 DeepSeek、Ollama 等多种 LLM Provider
+- **依赖注入**：所有服务通过构造函数注入，便于测试和替换
+- **流式输出**：完整的 SSE (Server-Sent Events) 支持
+- **向量数据库升级**：ChromaDB 替换 JSON 存储
+- **Rerank 模块**：支持重排序提高相关性
+- **缓存服务**：内存缓存加速重复查询
+- **CLI 工具**：离线索引管理和交互式查询客户端
+
+## 📁 项目结构
 
 ```
 llamaindex-rag/
 │
-├── api/
-│   └── app.py              # FastAPI 服务入口
-│
-├── engine/
+├── api/                        # HTTP API 层
 │   ├── __init__.py
-│   └── rag_engine.py       # 在线检索与生成 pipeline
+│   ├── routes.py              # REST 路由
+│   └── sse.py                 # SSE 流式处理
 │
-├── index/
+├── orchestrator/              # 编排层
 │   ├── __init__.py
-│   ├── build_index.py      # 离线索引构建脚本
-│   ├── loader.py           # 文档加载
-│   ├── chunker.py          # 文本切分
-│   └── vector_store.py     # 向量存储与检索
+│   └── rag_orchestrator.py    # RAG 流程编排
 │
-├── evaluation/
-│   ├── evaluator.py        # 离线评估脚本
-│   └── dataset.json        # 测试集
+├── services/                  # 服务层
+│   ├── __init__.py
+│   ├── indexing_service.py    # 离线索引服务
+│   ├── retrieval_service.py   # 在线检索服务
+│   ├── generation_service.py  # 生成服务
+│   └── cache_service.py       # 缓存服务
 │
-├── client/
-│   └── cli_chat.py         # CLI 客户端
+├── core/                      # 核心组件层
+│   ├── __init__.py
+│   ├── embedder.py           # Embedding 编码器
+│   ├── vector_store.py       # 向量存储抽象
+│   ├── vector_store_chroma.py # ChromaDB 实现
+│   ├── reranker.py          # Rerank 模块
+│   └── inference/           # 推理层
+│       ├── __init__.py
+│       ├── llm_provider.py   # LLM 抽象
+│       ├── deepseek_client.py
+│       └── ollama_client.py
+│
+├── models/                    # 数据模型层
+│   ├── __init__.py
+│   └── schemas.py            # Pydantic 模型
+│
+├── events/                    # 事件系统
+│   └── __init__.py
+│
+├── utils/                     # 工具函数
+│   ├── __init__.py
+│   └── config.py             # 配置加载
+│
+├── data/                      # 原始文档
+│   ├── pdf/
+│   ├── txt/
+│   └── docs/
+│
+├── database/                  # 持久化存储
+│   └── chroma_db/
 │
 ├── config/
 │   ├── __init__.py
-│   └── config.yaml         # 配置文件
+│   └── config.yaml           # 配置文件
 │
-├── data/                   # 原始文档
-│
-├── storage/                # 向量存储（自动生成）
-│
-├── main.py                 # 调试入口
-└── requirements.txt        # 依赖清单
+├── main.py                    # Web API 入口
+├── cli_index.py              # 离线索引 CLI
+├── cli_query.py              # 在线查询 CLI
+├── test_init.py              # 组件初始化测试
+├── test_v2.py                # 完整功能测试
+├── requirements.txt          # 依赖清单
+├── QUICKSTART.md            # 快速开始指南
+└── README.md                # 本文档
 ```
 
-## 快速开始
+## 🚀 快速开始
 
 ### 1. 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
+
+**要求**：Python 3.10+
 
 ### 2. 配置环境变量
 
@@ -66,160 +100,260 @@ DEEPSEEK_API_KEY=your_api_key_here
 DEEPSEEK_API_BASE=https://api.deepseek.com/v1
 ```
 
-### 3. 准备数据
-
-将文档（PDF、TXT 等格式）放入 `data/` 目录
-
-### 4. 构建索引
+### 3. 构建索引
 
 ```bash
-python index/build_index.py
+python cli_index.py build
 ```
 
-执行后会：
-1. 从 `data/` 读取文档
-2. 使用 llama-index 加载和切分文档
-3. 调用 embedding 模型生成向量
-4. 保存到 `storage/` 目录
+这将：
+- 从 `data/` 目录读取文档
+- 使用 llama-index 加载和切分文档
+- 调用 embedding 模型生成向量
+- 保存到 ChromaDB 向量数据库
 
-### 5. 启动 HTTP API 服务
+### 4. 启动 Web API 服务
 
 ```bash
-uvicorn api.app:app --reload --host 0.0.0.0 --port 8000
+python main.py
 ```
 
-API 端点：
-- `GET /health` - 健康检查
-- `POST /query` - RAG 查询
-  - 请求体：`{"query": "你的问题"}`
-  - 响应：`{"answer": "回答内容"}`
+服务将启动在 `http://localhost:8000`
+ 
+### 5. 使用 CLI 客户端
 
-### 6. 启动 CLI 客户端
-
-在另一个终端窗口运行：
+在另一个终端窗口：
 
 ```bash
-python client/cli_chat.py
+python cli_query.py
 ```
 
-### 7. 运行评估
+进入交互式问答界面。
+
+## 📖 API 接口
+
+### 健康检查
 
 ```bash
-python evaluation/evaluator.py
+curl http://localhost:8000/health
 ```
 
-会输出：
-- 每条样本的详细结果
-- 整体准确率和平均得分
-- 结果保存到 `evaluation/evaluation_result.json`
+### 普通查询
 
-## 配置说明
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "你的问题", "top_k": 5}'
+```
 
-编辑 `config/config.yaml` 调整参数：
+### 流式查询（SSE）
+
+```bash
+curl -X POST http://localhost:8000/query/stream \
+  -H "Content-Type: application/json" \
+  -d '{"query": "你的问题"}'
+```
+
+### 获取统计信息
+
+```bash
+curl http://localhost:8000/stats
+```
+
+### 索引管理
+
+#### 构建索引
+
+```bash
+curl -X POST http://localhost:8000/index/build \
+  -H "Content-Type: application/json" \
+  -d '{"force_rebuild": false}'
+```
+
+#### 删除索引
+
+```bash
+curl -X DELETE http://localhost:8000/index
+```
+
+#### 查看状态
+
+```bash
+curl http://localhost:8000/index/status
+```
+
+## 🔧 配置说明
+
+编辑 `config/config.yaml`：
 
 ```yaml
-# Embedding 模型
-embedding_model: "BAAI/bge-small-zh-v1.5"
+system:
+  name: "RAG System"
+  version: "2.0"
+  log_level: "INFO"
 
-# 文本切分
-chunk_size: 500
-chunk_overlap: 50
+indexing:
+  data_dir: "./data"
+  chunk_size: 500
+  chunk_overlap: 50
+  batch_size: 32
 
-# 检索配置
-top_k: 3
+retrieval:
+  top_k: 5
+  rerank_top_k: 10
+  use_hybrid_search: true
 
-# LLM 配置
-llm_model: "deepseek-chat"
+embedding:
+  model: "BAAI/bge-small-zh-v1.5"
+  dimension: 512
 
-# 路径配置
-vector_store_path: "./storage"
-data_path: "./data"
+inference:
+  provider: "deepseek"  # 可选：deepseek, ollama
+  providers:
+    deepseek:
+      api_key: "${DEEPSEEK_API_KEY}"
+      model: "deepseek-chat"
+      base_url: "https://api.deepseek.com/v1"
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "qwen2.5:1.5b"
 
-# API 配置
-api_host: "0.0.0.0"
-api_port: 8000
+database:
+  type: "chromadb"
+  path: "./database/chroma_db"
+
+cache:
+  enabled: true
+  type: "memory"
+  ttl: 3600
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  enable_stream: true
 ```
 
-## 模块说明
+## 🛠️ CLI 工具使用
 
-### Index 模块（离线索引构建）
+### cli_index.py - 索引管理
 
-- **loader.py**: 文档加载器，支持 PDF、TXT 等格式
-- **chunker.py**: 文本切分器，智能分割成长度合适的 chunk
-- **vector_store.py**: 本地向量存储，使用 JSON 持久化
-- **build_index.py**: 索引构建脚本，串联完整流程
+```bash
+# 构建索引
+python cli_index.py build
 
-### Engine 模块（在线检索引擎）
+# 强制重建
+python cli_index.py build --force
 
-**RAGEngine 类**提供以下方法：
+# 更新索引
+python cli_index.py update
+
+# 删除索引
+python cli_index.py delete
+
+# 查看状态
+python cli_index.py status
+```
+
+### cli_query.py - 交互式查询
+
+```bash
+# 进入交互模式
+python cli_query.py
+
+# 直接提问
+python cli_query.py -q "你的问题"
+
+# 指定 API 地址
+python cli_query.py -u http://localhost:8000
+
+# 禁用流式
+python cli_query.py -q "你的问题" --no-stream
+```
+
+## 🏗️ 架构设计
+
+### 核心分层
+
+1. **API 层** (`api/`): HTTP 接口，负责接收请求和返回响应
+2. **编排层** (`orchestrator/`): 协调各个服务完成复杂流程
+3. **服务层** (`services/`): 核心业务逻辑，独立可测试
+4. **核心组件层** (`core/`): 基础组件，可插拔实现
+5. **数据模型层** (`models/`): 数据结构定义
+
+### 依赖注入示例
 
 ```python
-engine = RAGEngine(config)
+# 初始化核心组件
+embedder = Embedder(model_name, dimension)
+vector_store = ChromaVectorStore(persist_dir)
+llm_provider = create_llm_provider(provider_type, config)
 
-# 检索相关文档
-contexts = engine.retrieve(query)
+# 初始化服务层（依赖注入）
+retrieval_service = RetrievalService(
+    embedder=embedder,
+    vector_store=vector_store,
+    reranker=reranker
+)
 
-# 构建 prompt
-prompt = engine.build_prompt(query, contexts)
+generation_service = GenerationService(
+    llm_provider=llm_provider
+)
 
-# 生成回答
-answer = engine.generate(prompt)
-
-# 完整 pipeline
-answer = engine.query(query)
+# 初始化编排层
+orchestrator = RAGOrchestrator(
+    retrieval_service=retrieval_service,
+    generation_service=generation_service,
+    cache_service=cache_service
+)
 ```
 
-### API 模块（HTTP 服务）
+## 🧪 测试
 
-基于 FastAPI 实现：
-- 自动启动时加载 RAG 引擎
-- 异步处理查询请求
-- 完整的错误处理
+### 组件初始化测试
 
-### Client 模块（CLI 客户端）
+```bash
+python test_init.py
+```
 
-- 循环读取用户输入
-- 调用 HTTP API
-- 友好的交互界面
+### 完整功能测试
 
-### Evaluation 模块（离线评估）
+```bash
+python test_v2.py
+```
 
-- 读取测试集
-- 批量执行查询
-- 计算准确率指标
-- 生成详细报告
+## 📊 性能优化建议
 
-## 技术栈
+1. **批量处理**：索引构建时使用较大的 `batch_size`
+2. **缓存启用**：对重复查询启用缓存
+3. **混合检索**：启用 BM25 + 向量混合检索（待实现）
+4. **异步处理**：索引构建使用后台任务
 
-- **Python**: 3.10+
-- **Web 框架**: FastAPI
-- **向量数据库**: 本地 JSON 存储（可扩展到 FAISS、Milvus 等）
-- **Embedding**: sentence-transformers (BAAI/bge-small-zh-v1.5)
-- **LLM**: DeepSeek (通过 llama-index 封装)
-- **文档处理**: llama-index-core（仅用于文档加载和切分）
+## 🔮 未来计划
 
-## 设计原则
+- [ ] 实现 BM25 混合检索
+- [ ] 集成 FlagEmbedding Rerank 模型
+- [ ] Redis 缓存支持
+- [ ] 多模态文档支持（图片、表格）
+- [ ] 对话历史管理
+- [ ] 评估系统
+- [ ] Docker 容器化
+- [ ] 监控和日志系统
 
-1. **模块化**: 每个模块职责单一，易于理解和维护
-2. **解耦**: 离线索引与在线检索完全分离
-3. **透明**: 不使用黑盒框架，pipeline 显式实现
-4. **可配置**: 所有参数通过 YAML 配置
-5. **可扩展**: 易于替换组件（如向量数据库、LLM 等）
+## 🤝 贡献
 
-## 常见问题
+欢迎提交 Issue 和 Pull Request！
 
-### Q: 如何更换 Embedding 模型？
-A: 修改 `config.yaml` 中的 `embedding_model` 字段
+## 📄 许可证
 
-### Q: 如何更换 LLM？
-A: 修改 `config.yaml` 中的 `llm_model` 字段，并在 `.env` 中配置对应的 API Key
+MIT License
 
-### Q: 向量存储可以扩展吗？
-A: 可以。只需实现 `vector_store.py` 中的接口，替换底层存储实现即可
+## 🙏 致谢
 
-### Q: 如何添加新的文档格式支持？
-A: 在 `loader.py` 中添加对应的解析器即可
+- [LlamaIndex](https://github.com/run-llama/llama_index)
+- [ChromaDB](https://github.com/chroma-core/chroma)
+- [FastAPI](https://github.com/tiangolo/fastapi)
+- [SentenceTransformers](https://github.com/UKPLab/sentence-transformers)
 
-## License
+---
 
-MIT
+**提示**：更多详细信息请查看 [QUICKSTART.md](QUICKSTART.md)
